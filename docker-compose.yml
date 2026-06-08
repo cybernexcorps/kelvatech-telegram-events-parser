@@ -1,0 +1,17 @@
+services:
+  events-parser:
+    build: .
+    env_file: .env
+    environment:
+      EVENTS_DB_PATH: /data/seen.sqlite3
+      CHANNELS_CONFIG: /app/channels.yaml
+    volumes:
+      - ./channels.yaml:/app/channels.yaml:ro
+      - events_data:/data
+    ports:
+      - "8080:8080"
+    command: ["uv", "run", "--extra", "runtime", "uvicorn",
+              "events_parser.app:app", "--host", "0.0.0.0", "--port", "8080"]
+
+volumes:
+  events_data:

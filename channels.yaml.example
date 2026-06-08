@@ -1,0 +1,7 @@
+# Channels to scan. `domain` (ai|pr) routes a channel to its subagent and digest section.
+# Real handles are confirmed in S10; these are placeholders.
+channels:
+  - handle: ai_events_channel      # e.g. an AI conferences/meetups channel
+    domain: ai
+  - handle: pr_events_channel      # e.g. a PR-industry events channel
+    domain: pr

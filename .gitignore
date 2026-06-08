@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Secrets & state
+.env
+/data/
+*.sqlite3
+
+# Telegram account session material — NEVER commit
+tdata/
+*tdata*/
+*.session
+*.session-journal
+
+# uv
+uv.lock

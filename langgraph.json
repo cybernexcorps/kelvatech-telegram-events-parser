@@ -1,0 +1,10 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "supervisor": "./src/events_parser/agents.py:supervisor_graph",
+    "ai_events": "./src/events_parser/agents.py:ai_events_graph",
+    "pr_events": "./src/events_parser/agents.py:pr_events_graph"
+  },
+  "env": ".env",
+  "_comment": "Async-subagent-server target (deepagents 0.5 preview): under a LangGraph deployment the supervisor's AsyncSubAgent specs (graphId ai_events/pr_events) run co-deployed over ASGI/Agent Protocol. In-container, AgentDigestService uses the sync-subagent form."
+}

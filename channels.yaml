@@ -1,0 +1,22 @@
+# Channels scanned for the weekly digest. `domain` (ai|pr) routes a channel to its
+# subagent and digest section. All verified live on t.me/s (2026-06-07).
+channels:
+  # --- AI-field events ---
+  - handle: ITMeeting                     # митапы/конференции по разработке (incl. AI), free-focused
+    domain: ai
+  - handle: freeitevent                   # бесплатные IT/AI события (хакатоны, вебинары)
+    domain: ai
+  - handle: iteventsrus                   # IT-события России: форумы/конференции/митапы/вебинары
+    domain: ai
+  - handle: ai_machinelearning_big_data   # ML/AI, анонсы AI-мероприятий (news + events)
+    domain: ai
+
+  # --- PR-field events ---
+  - handle: companiesrbc                  # PR с РБК Компании — календари PR/marketing-событий
+    domain: pr
+  - handle: inter_comm                    # InterComm — корпкоммуникации, анонсы PR-форумов
+    domain: pr
+  - handle: prexplore                     # PR-новости + анонсы мероприятий
+    domain: pr
+  - handle: roscongress                   # Росконгресс Директ — крупные форумы
+    domain: pr
