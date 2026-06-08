@@ -1,17 +1,26 @@
 services:
   events-parser:
-    build: .
+    build:
+      context: .
+      # Build over the host network: some hosts (RU clouds) blackhole IPv4 to PyPI
+      # and reach it only over IPv6. Host net gives the build container that IPv6.
+      network: host
     env_file: .env
+    restart: unless-stopped
     environment:
       EVENTS_DB_PATH: /data/seen.sqlite3
       CHANNELS_CONFIG: /app/channels.yaml
     volumes:
       - ./channels.yaml:/app/channels.yaml:ro
       - events_data:/data
-    ports:
-      - "8080:8080"
+    # Host networking: Docker's default bridge is IPv4-only, but some hosts (RU
+    # clouds) block Telegram DC IPv4 and only reach the data centers over IPv6
+    # (TELEGRAM_USE_IPV6=true). Host mode gives the container the host's IPv6.
+    # The app binds loopback (--host 127.0.0.1) so 8080 is never publicly exposed;
+    # cron-only deployment needs no inbound anyway.
+    network_mode: host
     command: ["uv", "run", "--extra", "runtime", "uvicorn",
-              "events_parser.app:app", "--host", "0.0.0.0", "--port", "8080"]
+              "events_parser.app:app", "--host", "127.0.0.1", "--port", "8080"]
 
 volumes:
   events_data:

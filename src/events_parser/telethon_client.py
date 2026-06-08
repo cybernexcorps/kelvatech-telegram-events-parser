@@ -42,11 +42,17 @@ def filter_recent(posts: list[RawPost], since: Optional[datetime]) -> list[RawPo
 
 class TelethonFetch:
     def __init__(self, api_id: int, api_hash: str, session: str,
-                 max_messages: int = 200, client_factory=None):
+                 max_messages: int = 200, use_ipv6: bool = False,
+                 dc_id: int = 0, dc_ip: str = "", dc_port: int = 443,
+                 client_factory=None):
         self._api_id = api_id
         self._api_hash = api_hash
         self._session = session
         self._max = max_messages
+        self._use_ipv6 = use_ipv6  # some hosts block Telegram DC IPv4; IPv6 reaches them
+        self._dc_id = dc_id        # optional DC pin (override the session's stored addr)
+        self._dc_ip = dc_ip
+        self._dc_port = dc_port
         self._client_factory = client_factory  # injectable for tests
 
     def _make_client(self):
@@ -54,7 +60,19 @@ class TelethonFetch:
             return self._client_factory()
         from telethon import TelegramClient  # lazy
         from telethon.sessions import StringSession
-        return TelegramClient(StringSession(self._session), self._api_id, self._api_hash)
+        client = TelegramClient(
+            StringSession(self._session), self._api_id, self._api_hash,
+            use_ipv6=self._use_ipv6,
+        )
+        if self._dc_ip:
+            # The StringSession carries the home DC's IPv4 address, which some hosts
+            # blackhole. set_dc rewrites the stored (dc_id, server_address, port) so
+            # the client dials the reachable IPv6 endpoint instead. dc_id must match
+            # the account's home DC or migration breaks.
+            if self._dc_id == 0:
+                log.warning("TELEGRAM_DC_IP set but TELEGRAM_DC_ID=0 — set the home DC id")
+            client.session.set_dc(self._dc_id, self._dc_ip, self._dc_port)
+        return client
 
     async def _fetch(self, channel: str, since: Optional[datetime]) -> list[RawPost]:
         client = self._make_client()
@@ -82,4 +100,8 @@ def build_telethon_fetch(env: Optional[dict] = None) -> "TelethonFetch":
         api_hash=env["TELEGRAM_API_HASH"],
         session=env["TELEGRAM_SESSION"],
         max_messages=int(env.get("TELETHON_MAX_MESSAGES", "200")),
+        use_ipv6=env.get("TELEGRAM_USE_IPV6", "false").lower() in ("1", "true", "yes"),
+        dc_id=int(env.get("TELEGRAM_DC_ID", "0") or "0"),
+        dc_ip=env.get("TELEGRAM_DC_IP", "").strip(),
+        dc_port=int(env.get("TELEGRAM_DC_PORT", "443") or "443"),
     )

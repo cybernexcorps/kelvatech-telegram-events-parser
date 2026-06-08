@@ -1,8 +1,9 @@
 # Kelva Telegram Events Parser — single-container deployment.
 FROM python:3.12-slim
 
-# uv for fast, reproducible installs.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# uv for fast, reproducible installs. Installed from PyPI rather than copied from
+# ghcr.io/astral-sh/uv — some hosts (e.g. RU clouds) can't reach ghcr.io.
+RUN pip install --no-cache-dir uv
 
 WORKDIR /app
 
