@@ -92,8 +92,11 @@ uv run --extra dev pytest        # 55 unit tests — no network / LLM / Telegram
 
 The architecture is built around injectable seams (`Fetch`, `Extractor`,
 `SeenStore`, `Notifier` protocols) so the whole pipeline is testable with fakes.
-See [`docs/PRD.md`](docs/PRD.md) for the product spec and [`docs/issues/`](docs/issues)
-for the vertical-slice build backlog.
+
+**Documentation:** [`docs/MANUAL.md`](docs/MANUAL.md) — complete manual (architecture,
+modules, data model, business rules, config, deployment, ops, troubleshooting) ·
+[`docs/PRD.md`](docs/PRD.md) — product spec · [`docs/DEPLOY.md`](docs/DEPLOY.md) —
+deploy runbook · [`docs/issues/`](docs/issues) — build backlog.
 
 ## Tech stack
 
