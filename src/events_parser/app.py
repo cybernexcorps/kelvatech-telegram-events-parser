@@ -14,9 +14,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Request
 
 from .factory import build_config, build_deps
-from .notify import build_error_alerter
+from .notify import TelegramNotifier, build_error_alerter
 from .runner import DigestRunner
-from .schedule import build_weekly_trigger, guarded_scheduled_run
+from .schedule import build_weekly_trigger
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -27,11 +27,11 @@ def _now() -> datetime:
 
 
 def make_runner() -> DigestRunner:
-    use_agents = os.environ.get("USE_AGENTS", "true").lower() in ("1", "true", "yes")
-    config = build_config()
+    # The cron host defaults to the agentic path; USE_AGENTS in the env still overrides.
+    config = build_config(use_agents_default=True)
     deps = build_deps()
     agentic = None
-    if use_agents:
+    if config.use_agents:
         from .factory import build_agent_service
         agentic = build_agent_service(config, deps)
     return DigestRunner(_now, config, deps, agentic_service=agentic)
@@ -42,12 +42,18 @@ async def lifespan(app: FastAPI):
     runner = make_runner()
     app.state.runner = runner
 
+    # Plain-text replier for /digest acknowledgements — same Telegram-send seam as the
+    # digest (HTML) and the error alerter, so parse_mode/splitting can't diverge again.
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    app.state.replier = TelegramNotifier(bot_token, parse_mode=None) if bot_token else None
+
     scheduler = BackgroundScheduler(timezone="UTC")
     cron = os.environ.get("DIGEST_SCHEDULE_CRON", "0 9 * * 1")  # Mondays 09:00 UTC
-    # Only the SCHEDULED fire is guarded with operator alerting (#4); the manual
-    # /trigger and /digest paths already report failures to their own callers.
+    # Every caller routes through runner.run_guarded (never-crash); only the SCHEDULED
+    # fire passes an alerter — the manual /trigger and /digest paths report failures to
+    # their own human caller, so they guard without alerting. See docs/adr/0005.
     alerter = build_error_alerter(os.environ)
-    scheduler.add_job(lambda: guarded_scheduled_run(runner.run, alerter),
+    scheduler.add_job(lambda: runner.run_guarded(alert=alerter),
                       build_weekly_trigger(cron), id="weekly_digest",
                       max_instances=1, coalesce=True)
     scheduler.start()
@@ -69,22 +75,25 @@ def health():
 
 @app.post("/trigger")
 def trigger():
-    """Manual digest trigger (testing / ad hoc)."""
-    result = app.state.runner.run()
+    """Manual digest trigger (testing / ad hoc). Guarded — never 500s on a run error."""
+    result = app.state.runner.run_guarded()  # no alerter: this caller sees the response
     if result is None:
-        return {"status": "skipped", "reason": "a run is already in progress"}
+        # None = a run is already in progress, or the run failed (swallowed; see logs).
+        return {"status": "skipped", "reason": "no digest produced — run in progress or failed (see logs)"}
     return {"status": "ok", "events": len(result.events), "sent": result.sent}
 
 
 def _reply(chat_id, text: str) -> None:
-    """Send a Telegram reply to the requester (best-effort)."""
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not chat_id or not token:
+    """Acknowledge the requester via the shared Telegram-send seam (best-effort).
+
+    Delegates to the plain-text replier built at startup. Never raises — a failed
+    acknowledgement must not break the webhook handler or mask the digest result.
+    """
+    replier = getattr(app.state, "replier", None)
+    if not chat_id or replier is None:
         return
-    import httpx
     try:
-        httpx.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                   json={"chat_id": chat_id, "text": text}, timeout=20.0)
+        replier.send(chat_id, text)
     except Exception:
         log.warning("failed to send /digest acknowledgement", exc_info=True)
 
@@ -98,9 +107,9 @@ async def telegram_webhook(request: Request):
     chat_id = (msg.get("chat", {}) or {}).get("id")
     if text.strip().split("@")[0] == "/digest":
         _reply(chat_id, "⏳ Собираю дайджест мероприятий…")
-        result = app.state.runner.run()
+        result = app.state.runner.run_guarded()  # guarded: a failure won't 500 the webhook
         if result is None:
-            _reply(chat_id, "⚠️ Сбор уже выполняется — попробуйте чуть позже.")
+            _reply(chat_id, "⚠️ Не удалось собрать дайджест (уже идёт сбор или ошибка). Попробуйте позже.")
             return {"status": "skipped"}
         _reply(chat_id, f"✅ Готово: {len(result.events)} событий "
                         f"(отправлено в канал: {'да' if result.sent else 'нет'}).")

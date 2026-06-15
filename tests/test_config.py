@@ -51,3 +51,22 @@ def test_config_from_env_reads_tunables():
     assert cfg.scan_days == 10
     assert cfg.send_on_empty is False
     assert cfg.channels == [("ai_chan", "ai")]
+
+
+def test_use_agents_defaults_per_caller_when_env_absent():
+    # USE_AGENTS used to be read raw at each entry point with divergent defaults
+    # (cron app.py=true, CLI __main__.py=false). The split is intentional — local
+    # iteration stays on the cheap deterministic path, prod runs the agentic path —
+    # so Config resolves it from a caller-supplied default, one place, one parser.
+    assert Config.from_env({}, channels=[], use_agents_default=True).use_agents is True
+    assert Config.from_env({}, channels=[], use_agents_default=False).use_agents is False
+
+
+def test_use_agents_env_overrides_default_with_one_truthiness_rule():
+    # Regression: the cron path honored "1"/"yes"/"on" but the CLI honored only
+    # "true", so USE_AGENTS=1 silently meant different things per entry point.
+    # One parser (_as_bool) now governs both, overriding the caller default.
+    for truthy in ("1", "true", "yes", "on", "TRUE"):
+        assert Config.from_env({"USE_AGENTS": truthy}, use_agents_default=False).use_agents is True
+    for falsy in ("0", "false", "no", "off"):
+        assert Config.from_env({"USE_AGENTS": falsy}, use_agents_default=True).use_agents is False

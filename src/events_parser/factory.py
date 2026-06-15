@@ -11,10 +11,14 @@ from .config import Config, load_channels
 from .orchestrator import Deps
 
 
-def build_config(env: Optional[Mapping[str, str]] = None) -> Config:
+def build_config(
+    env: Optional[Mapping[str, str]] = None,
+    *,
+    use_agents_default: bool = False,
+) -> Config:
     env = env if env is not None else os.environ
     channels = load_channels(env.get("CHANNELS_CONFIG", "channels.yaml"))
-    return Config.from_env(env, channels=channels)
+    return Config.from_env(env, channels=channels, use_agents_default=use_agents_default)
 
 
 def build_fetch(env: Optional[Mapping[str, str]] = None):

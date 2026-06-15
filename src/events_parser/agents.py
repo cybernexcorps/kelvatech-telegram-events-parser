@@ -29,24 +29,32 @@ class EventCollector:
 
     def __init__(self) -> None:
         self.events: list[Event] = []
+        self.failures: list[str] = []  # channels whose fetch errored this run
 
 
-def _build_tools(collector: EventCollector, scan_days: int):
-    """Tools backed by the deterministic preview client + Yandex extractor."""
+def _build_tools(collector: EventCollector, scan_days: int, fetch=None, extractor=None):
+    """Tools backed by the deterministic preview client + Yandex extractor.
+
+    ``fetch``/``extractor`` are injectable so the tool behaviour is unit-testable;
+    when omitted they are built from the environment (the live path).
+    """
     from langchain_core.tools import tool
 
-    from .extraction import build_yandex_extractor
-    from .factory import build_fetch
-
-    preview = build_fetch()  # Telethon when configured, else t.me/s preview
-    extractor = build_yandex_extractor()
+    if fetch is None:
+        from .factory import build_fetch
+        fetch = build_fetch()  # Telethon when configured, else t.me/s preview
+    if extractor is None:
+        from .extraction import build_yandex_extractor
+        extractor = build_yandex_extractor()
 
     @tool
     def list_recent_posts(channel: str) -> str:
         """List recent post ids + text snippets from a public Telegram channel preview."""
         since = datetime.now(timezone.utc) - timedelta(days=scan_days)
-        posts = preview.fetch_recent(channel, since)
-        return "\n".join(f"[{p.id}] {p.text[:120]}" for p in posts) or "(no posts)"
+        result = fetch.fetch_recent(channel, since)
+        if not result.ok:
+            return f"(канал {channel} недоступен: {result.error})"
+        return "\n".join(f"[{p.id}] {p.text[:120]}" for p in result.posts) or "(no posts)"
 
     @tool
     def extract_and_record_events(channel: str, domain: str) -> str:
@@ -55,8 +63,12 @@ def _build_tools(collector: EventCollector, scan_days: int):
         Returns how many events were recorded. Call this once per channel you own.
         """
         since = datetime.now(timezone.utc) - timedelta(days=scan_days)
+        result = fetch.fetch_recent(channel, since)
+        if not result.ok:
+            collector.failures.append(channel)  # failed ≠ quiet — surface to the digest result
+            return f"канал {channel} недоступен ({result.error}); записано 0 событий"
         count = 0
-        for post in preview.fetch_recent(channel, since):
+        for post in result.posts:
             for ev in extractor.extract(post):
                 if ev.domain != domain:
                     ev = ev.model_copy(update={"domain": domain})
@@ -208,4 +220,5 @@ class AgentDigestService:
             "role": "user",
             "content": "Собери мероприятия по всем каналам через субагентов ai-events и pr-events.",
         }]})
-        return finish_digest(collector.events, now, self._config, self._deps)
+        return finish_digest(collector.events, now, self._config, self._deps,
+                             fetch_failures=collector.failures)

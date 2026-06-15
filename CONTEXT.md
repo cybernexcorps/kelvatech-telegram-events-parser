@@ -50,3 +50,11 @@ _Avoid_: AI path, agent mode
 The subject a channel and its events belong to — `ai` or `pr`. The channel's configured
 domain is authoritative and overrides whatever the extractor guessed.
 _Avoid_: category, topic, vertical
+
+**Fetch failure**:
+A channel whose fetch errored this run (network / auth / parse), carried up as a
+`ChannelFetchResult` with `ok=False` — deliberately distinct from a channel that was
+merely **quiet** (fetched fine, no recent posts). The distinction is what lets the
+scheduled-run guard alert precisely instead of via the blunt 0-events proxy. See
+docs/adr/0004-fetch-seam-reports-channel-health.md.
+_Avoid_: skip, empty channel, dead channel (a failure may be transient)

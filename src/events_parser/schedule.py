@@ -8,12 +8,6 @@ See docs/adr/0001-weekly-cron-weekday-named-day.md.
 """
 from __future__ import annotations
 
-import logging
-from datetime import datetime, timezone
-from typing import Callable, Optional
-
-log = logging.getLogger(__name__)
-
 # Standard crontab weekday numbering (0 and 7 are both Sunday).
 _CRON_DOW_TO_NAME = {
     "0": "sun", "1": "mon", "2": "tue", "3": "wed",
@@ -47,31 +41,3 @@ def build_weekly_trigger(cron: str, tz: str = "UTC"):
         minute=minute, hour=hour, day=day, month=month,
         day_of_week=normalize_weekday_field(dow), timezone=tz,
     )
-
-
-def _safe_alert(alert: Callable[[str], None], text: str) -> None:
-    """Send an operator alert without ever letting its failure escape — a broken
-    alert channel must not crash the scheduled run."""
-    try:
-        alert(text)
-    except Exception:
-        log.warning("failed to send failure alert", exc_info=True)
-
-
-def guarded_scheduled_run(run_fn, alert: Callable[[str], None], now_fn=None):
-    """Run the scheduled digest, alerting the operator on failure (issue #4).
-
-    Wraps only the scheduled fire (manual /trigger and /digest report to their own
-    callers). Best-effort and non-crashing: neither a run exception nor an
-    alert-send failure propagates, so APScheduler keeps its next fire.
-    """
-    now_fn = now_fn or (lambda: datetime.now(timezone.utc))
-    try:
-        result = run_fn()
-    except Exception as exc:
-        _safe_alert(alert, f"⚠️ Сбор дайджеста упал: {type(exc).__name__}: {exc} · {now_fn().isoformat()}")
-        return None
-    # result is None only when a run was already in progress (lock skip) — not a failure.
-    if result is not None and not getattr(result, "events", None):
-        _safe_alert(alert, f"⚠️ Дайджест: 0 событий (возможен сбой сбора или пустая неделя) · {now_fn().isoformat()}")
-    return result

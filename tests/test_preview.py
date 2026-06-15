@@ -46,12 +46,24 @@ def test_fetch_posts_uses_before_cursor_for_older_page():
     assert ids1.isdisjoint(ids2)          # no overlap
 
 
-def test_unreachable_channel_yields_empty_and_does_not_raise():
+def test_fetch_posts_raises_on_http_failure():
+    # fetch_posts now fetches one page or raises — resilience moved up to fetch_recent.
     def boom(url):
         raise RuntimeError("network down")
 
-    client = PreviewClient(http_get=boom)
-    assert client.fetch_posts("dead_chan") == []
+    with pytest.raises(RuntimeError):
+        PreviewClient(http_get=boom).fetch_posts("dead_chan")
+
+
+def test_unreachable_channel_yields_failed_result_not_silent_empty():
+    def boom(url):
+        raise RuntimeError("network down")
+
+    result = PreviewClient(http_get=boom).fetch_recent("dead_chan")  # must not raise
+    assert result.ok is False
+    assert result.posts == []
+    assert result.channel == "dead_chan"
+    assert "network down" in (result.error or "")
 
 
 def test_blank_html_yields_empty():
@@ -65,13 +77,14 @@ def test_fetch_recent_paginates_until_pages_run_out():
         "https://t.me/s/telegram?before=405": "<html></html>",  # empty → stop
     }
     client = PreviewClient(http_get=lambda url: pages[url])
-    posts = client.fetch_recent("telegram", max_pages=5)
-    assert len(posts) == 40                      # both non-empty pages collected
-    assert len({p.id for p in posts}) == 40      # de-duplicated across pages
+    result = client.fetch_recent("telegram", max_pages=5)
+    assert result.ok is True
+    assert len(result.posts) == 40                       # both non-empty pages collected
+    assert len({p.id for p in result.posts}) == 40       # de-duplicated across pages
 
 
 def test_fetch_recent_respects_max_pages():
     client = PreviewClient(http_get=lambda url: PAGE1)  # always returns same page
-    posts = client.fetch_recent("telegram", max_pages=2)
+    result = client.fetch_recent("telegram", max_pages=2)
     # 20 unique ids even though 2 pages fetched (same ids) — capped, no infinite loop
-    assert len({p.id for p in posts}) == 20
+    assert len({p.id for p in result.posts}) == 20

@@ -45,12 +45,17 @@ class Config:
     horizon_days: int = 28
     scan_days: int = 7
     send_on_empty: bool = True
+    # Selects deterministic vs agentic path. The default is supplied by the caller
+    # (cron host=True, CLI=False) because the split is intentional; see docs/adr/0003.
+    use_agents: bool = False
 
     @classmethod
     def from_env(
         cls,
         env: Optional[Mapping[str, str]] = None,
         channels: Optional[list[ChannelSpec]] = None,
+        *,
+        use_agents_default: bool = False,
     ) -> "Config":
         env = env if env is not None else os.environ
         return cls(
@@ -60,4 +65,5 @@ class Config:
             horizon_days=int(env.get("HORIZON_DAYS", "28") or 28),
             scan_days=int(env.get("SCAN_DAYS", "7") or 7),
             send_on_empty=_as_bool(env.get("SEND_ON_EMPTY"), default=True),
+            use_agents=_as_bool(env.get("USE_AGENTS"), default=use_agents_default),
         )

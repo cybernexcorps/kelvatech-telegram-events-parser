@@ -15,7 +15,7 @@ from typing import Callable, Optional
 import httpx
 from selectolax.parser import HTMLParser
 
-from .models import RawPost
+from .models import ChannelFetchResult, RawPost
 
 log = logging.getLogger(__name__)
 
@@ -75,12 +75,9 @@ class PreviewClient:
         self._get = http_get or _default_get
 
     def fetch_posts(self, channel: str, before: Optional[int] = None) -> list[RawPost]:
-        url = build_preview_url(channel, before)
-        try:
-            html = self._get(url)
-        except Exception as exc:  # network/HTTP failure must not abort the run
-            log.warning("preview fetch failed for %s (%s); skipping", channel, exc)
-            return []
+        """Fetch and parse one preview page. Raises on network/HTTP failure —
+        ``fetch_recent`` owns the skip-on-failure resilience (and reports it)."""
+        html = self._get(build_preview_url(channel, before))
         return parse_preview(html, channel)
 
     def fetch_recent(
@@ -88,24 +85,31 @@ class PreviewClient:
         channel: str,
         since: Optional[datetime] = None,
         max_pages: int = 3,
-    ) -> list[RawPost]:
+    ) -> ChannelFetchResult:
         """Paginate backward via ?before= until the scan window is covered.
 
         Stops when: a page is empty, the cursor stops advancing, max_pages is hit,
-        or (when `since` is given) the oldest post on a page predates `since`.
+        or (when `since` is given) the oldest post on a page predates `since`. A
+        fetch failure is captured as a failed ``ChannelFetchResult`` (not raised),
+        so one bad channel never aborts the run but is no longer silently empty.
         """
         collected: dict[int, RawPost] = {}
         before: Optional[int] = None
-        for _ in range(max_pages):
-            page = self.fetch_posts(channel, before=before)
-            if not page:
-                break
-            for p in page:
-                collected.setdefault(p.id, p)
-            page_min = min(p.id for p in page)
-            if before is not None and page_min >= before:
-                break  # cursor did not advance — avoid an infinite loop
-            if since is not None and any(p.dt and p.dt < since for p in page):
-                break  # reached posts older than the scan window
-            before = page_min
-        return sorted(collected.values(), key=lambda p: p.id, reverse=True)
+        try:
+            for _ in range(max_pages):
+                page = self.fetch_posts(channel, before=before)
+                if not page:
+                    break
+                for p in page:
+                    collected.setdefault(p.id, p)
+                page_min = min(p.id for p in page)
+                if before is not None and page_min >= before:
+                    break  # cursor did not advance — avoid an infinite loop
+                if since is not None and any(p.dt and p.dt < since for p in page):
+                    break  # reached posts older than the scan window
+                before = page_min
+        except Exception as exc:  # network/HTTP/parse failure: report, don't abort the run
+            log.warning("preview fetch failed for %s (%s); skipping", channel, exc)
+            return ChannelFetchResult.failed(channel, f"{type(exc).__name__}: {exc}")
+        posts = sorted(collected.values(), key=lambda p: p.id, reverse=True)
+        return ChannelFetchResult.succeeded(channel, posts)

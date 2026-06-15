@@ -16,7 +16,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from .models import RawPost
+from .models import ChannelFetchResult, RawPost
 
 log = logging.getLogger(__name__)
 
@@ -85,12 +85,13 @@ class TelethonFetch:
                 posts.append(p)
         return filter_recent(posts, since)
 
-    def fetch_recent(self, channel: str, since: Optional[datetime] = None) -> list[RawPost]:
+    def fetch_recent(self, channel: str, since: Optional[datetime] = None) -> ChannelFetchResult:
         try:
-            return asyncio.run(self._fetch(channel, since))
+            posts = asyncio.run(self._fetch(channel, since))
         except Exception as exc:  # one bad channel must not abort the whole run
             log.warning("telethon fetch failed for %s (%s); skipping", channel, exc)
-            return []
+            return ChannelFetchResult.failed(channel, f"{type(exc).__name__}: {exc}")
+        return ChannelFetchResult.succeeded(channel, posts)
 
 
 def build_telethon_fetch(env: Optional[dict] = None) -> "TelethonFetch":

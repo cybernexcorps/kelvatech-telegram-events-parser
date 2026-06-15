@@ -2,18 +2,21 @@
 from datetime import datetime, timedelta, timezone
 
 from events_parser.config import Config
-from events_parser.models import Event, RawPost
+from events_parser.models import ChannelFetchResult, Event, RawPost
 from events_parser.orchestrator import Deps, run_digest
 
 NOW = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
 
 
 class FakeFetch:
-    def __init__(self, posts_by_channel):
+    def __init__(self, posts_by_channel, fail=()):
         self._by = posts_by_channel  # channel -> [RawPost]
+        self._fail = set(fail)       # channels whose fetch errors
 
     def fetch_recent(self, channel, since=None):
-        return list(self._by.get(channel, []))
+        if channel in self._fail:
+            return ChannelFetchResult.failed(channel, "boom")
+        return ChannelFetchResult.succeeded(channel, list(self._by.get(channel, [])))
 
 
 class FakeExtractor:
@@ -127,6 +130,30 @@ def test_channel_domain_overrides_extractor_domain():
     result = run_digest(NOW, cfg, deps)
     # PR section header present, event rendered under PR domain
     assert "PR" in result.digest_text and "PR-форум" in result.digest_text
+
+
+def test_failed_channel_fetch_surfaces_in_result_not_silently_empty():
+    # A channel whose fetch errors must be distinguishable from a quiet one: it
+    # lands in fetch_failures, while healthy channels still deliver their events.
+    cfg = Config(channels=[("ai_chan", "ai"), ("dead_chan", "ai")], target_chat_id=1)
+    notifier = FakeNotifier()
+    deps = Deps(fetch=FakeFetch({"ai_chan": [_post(1, "ai_chan")]}, fail={"dead_chan"}),
+                extractor=FakeExtractor({1: [_event("Живой вебинар")]}),
+                seen_store=FakeSeenStore(), notifier=notifier)
+
+    result = run_digest(NOW, cfg, deps)
+
+    assert result.fetch_failures == ["dead_chan"]
+    assert "Живой вебинар" in result.digest_text  # healthy channel unaffected
+
+
+def test_no_fetch_failures_when_all_channels_ok():
+    cfg = Config(channels=[("ai_chan", "ai")], target_chat_id=1)
+    deps = _deps({"ai_chan": [_post(1, "ai_chan")]}, {1: [_event("X")]}, FakeNotifier())
+
+    result = run_digest(NOW, cfg, deps)
+
+    assert result.fetch_failures == []
 
 
 def test_undated_events_marked_seen_only_on_real_send():

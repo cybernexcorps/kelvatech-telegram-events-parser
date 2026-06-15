@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal, Optional
 
@@ -21,6 +22,30 @@ class RawPost(BaseModel):
     text: str
     dt: Optional[datetime] = None
     permalink: Optional[str] = None
+
+
+@dataclass
+class ChannelFetchResult:
+    """Outcome of fetching one channel: the posts plus whether the fetch succeeded.
+
+    A failed fetch (network / auth / parse error) is deliberately distinct from a
+    channel that simply had no recent posts — both used to collapse to an empty
+    list, which is exactly why scheduled-run alerting could only fall back to the
+    blunt "0 events" proxy. ``ok=False`` carries the failure up to the collectors.
+    """
+
+    channel: str
+    posts: list[RawPost] = field(default_factory=list)
+    ok: bool = True
+    error: Optional[str] = None
+
+    @classmethod
+    def succeeded(cls, channel: str, posts: list[RawPost]) -> "ChannelFetchResult":
+        return cls(channel=channel, posts=posts, ok=True)
+
+    @classmethod
+    def failed(cls, channel: str, error: str) -> "ChannelFetchResult":
+        return cls(channel=channel, posts=[], ok=False, error=error)
 
 
 def _normalize(s: str) -> str:

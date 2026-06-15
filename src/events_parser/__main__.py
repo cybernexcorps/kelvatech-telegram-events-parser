@@ -39,14 +39,15 @@ def _demo_deps():
     """In-memory deps producing one sample event — skeleton only."""
     from datetime import timedelta
 
-    from .models import Event, RawPost
+    from .models import ChannelFetchResult, Event, RawPost
     from .orchestrator import Deps
 
     class _Fetch:
         def fetch_recent(self, channel, since=None):
-            return [RawPost(id=1, channel=channel, text="Бесплатный вебинар по ИИ",
-                            dt=datetime.now(timezone.utc),
-                            permalink=f"https://t.me/{channel}/1")]
+            posts = [RawPost(id=1, channel=channel, text="Бесплатный вебинар по ИИ",
+                             dt=datetime.now(timezone.utc),
+                             permalink=f"https://t.me/{channel}/1")]
+            return ChannelFetchResult.succeeded(channel, posts)
 
     class _Extractor:
         def extract(self, post):
@@ -87,12 +88,14 @@ def _run_live(dry_run: bool, use_agents: bool | None) -> int:
     from .runner import DigestRunner
 
     _load_dotenv()
-    config = build_config()
+    # The CLI defaults to the cheap deterministic path; USE_AGENTS in the env overrides.
+    config = build_config(use_agents_default=False)
     if dry_run:
         config = dataclasses.replace(config, dry_run=True)
 
+    # An explicit --agents/--no-agents flag wins over the env-resolved Config default.
     if use_agents is None:
-        use_agents = os.environ.get("USE_AGENTS", "false").lower() == "true"
+        use_agents = config.use_agents
 
     deps = build_deps()
     agentic = build_agent_service(config, deps) if use_agents else None
