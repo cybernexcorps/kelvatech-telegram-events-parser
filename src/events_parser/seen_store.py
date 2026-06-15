@@ -21,7 +21,13 @@ class SeenStore:
             parent = Path(db_path).expanduser().parent
             if parent and not parent.exists():
                 parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
+        # check_same_thread=False: the connection is opened here (often the app's
+        # main thread) but the weekly digest runs in an APScheduler worker thread.
+        # Safe ONLY because every digest run is serialized — DigestRunner._lock plus
+        # APScheduler max_instances=1/coalesce, and all callers funnel through
+        # DigestRunner.run — so the connection is never used concurrently. See
+        # docs/adr/0002-seen-store-single-connection-across-threads.md.
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS seen_events (

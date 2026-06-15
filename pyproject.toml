@@ -22,7 +22,7 @@ runtime = [
     "langsmith>=0.1",
     "fastapi>=0.115",
     "uvicorn>=0.30",
-    "apscheduler>=3.10",
+    "apscheduler>=3.10,<4",  # v4 changes CronTrigger weekday semantics + API; see docs/adr/0001
     "python-telegram-bot>=21.0",
     "telethon>=1.36",
 ]

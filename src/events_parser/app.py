@@ -11,11 +11,12 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, Request
 
 from .factory import build_config, build_deps
+from .notify import build_error_alerter
 from .runner import DigestRunner
+from .schedule import build_weekly_trigger, guarded_scheduled_run
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -43,7 +44,11 @@ async def lifespan(app: FastAPI):
 
     scheduler = BackgroundScheduler(timezone="UTC")
     cron = os.environ.get("DIGEST_SCHEDULE_CRON", "0 9 * * 1")  # Mondays 09:00 UTC
-    scheduler.add_job(runner.run, CronTrigger.from_crontab(cron), id="weekly_digest",
+    # Only the SCHEDULED fire is guarded with operator alerting (#4); the manual
+    # /trigger and /digest paths already report failures to their own callers.
+    alerter = build_error_alerter(os.environ)
+    scheduler.add_job(lambda: guarded_scheduled_run(runner.run, alerter),
+                      build_weekly_trigger(cron), id="weekly_digest",
                       max_instances=1, coalesce=True)
     scheduler.start()
     app.state.scheduler = scheduler

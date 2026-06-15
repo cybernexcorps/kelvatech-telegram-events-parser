@@ -56,6 +56,7 @@ Required for a live cron deployment:
 | `YANDEX_API_KEY` / `YANDEX_FOLDER_ID` | Yandex Foundation Models auth |
 | `USE_AGENTS` | `true` for the Deep Agents path |
 | `DIGEST_SCHEDULE_CRON` | default `0 9 * * 1` = Mon 09:00 **UTC** = 12:00 MSK |
+| `TELEGRAM_ERROR_BOT_TOKEN` / `TELEGRAM_ERROR_CHAT_ID` | optional (#4): failure alerts for the scheduled run via @kelva_errors_bot. Unset → alerting is a no-op. Operator must press Start on @kelva_errors_bot. |
 
 If `TELEGRAM_API_ID`/`TELEGRAM_SESSION` are absent the reader silently falls back
 to the zero-auth `t.me/s` HTML preview client.
