@@ -70,3 +70,41 @@ def test_use_agents_env_overrides_default_with_one_truthiness_rule():
         assert Config.from_env({"USE_AGENTS": truthy}, use_agents_default=False).use_agents is True
     for falsy in ("0", "false", "no", "off"):
         assert Config.from_env({"USE_AGENTS": falsy}, use_agents_default=True).use_agents is False
+
+
+def test_business_and_legal_are_valid_domains(tmp_path):
+    path = _write(tmp_path, """
+channels:
+  - handle: biz_chan
+    domain: business
+  - handle: law_chan
+    domain: legal
+""")
+    assert load_channels(path) == [("biz_chan", "business"), ("law_chan", "legal")]
+
+
+def test_valid_domains_derive_from_registry():
+    from events_parser.config import VALID_DOMAINS
+    from events_parser.models import DOMAINS
+
+    assert VALID_DOMAINS == set(DOMAINS)
+    assert {"ai", "pr", "business", "legal"} <= set(DOMAINS)
+
+
+def test_repo_channels_yaml_set_is_correct():
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    specs = load_channels(str(repo_root / "channels.yaml"))
+    handles = [h for h, _ in specs]
+    by_domain: dict[str, set[str]] = {}
+    for h, d in specs:
+        by_domain.setdefault(d, set()).add(h)
+
+    assert "itevents" in by_domain.get("ai", set())
+    assert {"expomap", "bizspbnews", "bizmosnews", "exportnow", "aboutinvestment", "wbnrs"} <= by_domain.get("business", set())
+    assert {"prmsk_channel", "prspb_channel", "rasopr"} <= by_domain.get("pr", set())
+    assert "aestheticsoflawevents" in by_domain.get("legal", set())
+    for rejected in ("itrussiaevents", "productsense", "moscowbiznes"):
+        assert rejected not in handles
+    assert len(handles) == len(set(handles)), "duplicate channel handles"

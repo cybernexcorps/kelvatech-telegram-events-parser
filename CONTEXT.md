@@ -47,8 +47,9 @@ subagents, then rejoins the shared `finish_digest`. Selected by `USE_AGENTS`.
 _Avoid_: AI path, agent mode
 
 **Domain**:
-The subject a channel and its events belong to — `ai` or `pr`. The channel's configured
-domain is authoritative and overrides whatever the extractor guessed.
+The subject a channel and its events belong to — `ai`, `pr`, `business`, or `legal`
+(the full set is `events_parser.models.DOMAINS`). The channel's configured domain is
+authoritative and overrides whatever the extractor guessed.
 _Avoid_: category, topic, vertical
 
 **Fetch failure**:

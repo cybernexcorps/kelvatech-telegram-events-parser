@@ -51,8 +51,8 @@ def _demo_deps():
 
     class _Extractor:
         def extract(self, post):
-            return [Event(title="Демо-событие: вебинар по ИИ", event_type="webinar",
-                          host="Kelva", cost_status="free", domain="ai",
+            return [Event(title=f"Демо-событие ({post.channel})", event_type="webinar",
+                          host="Kelva", cost_status="free",
                           start_date=datetime.now(timezone.utc) + timedelta(days=7),
                           source_channel=post.channel, source_post_url=post.permalink,
                           source_post_dt=post.dt)]
@@ -72,7 +72,12 @@ def _run_demo(dry_run: bool) -> int:
     from .config import Config
     from .orchestrator import run_digest
 
-    cfg = Config(channels=[("demo_ai_chan", "ai")], target_chat_id=0, dry_run=dry_run)
+    cfg = Config(channels=[
+        ("demo_ai_chan", "ai"),
+        ("demo_pr_chan", "pr"),
+        ("demo_biz_chan", "business"),
+        ("demo_law_chan", "legal"),
+    ], target_chat_id=0, dry_run=dry_run)
     result = run_digest(datetime.now(timezone.utc), cfg, _demo_deps())
     if dry_run:
         print(result.digest_text)

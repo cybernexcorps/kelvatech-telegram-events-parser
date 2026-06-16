@@ -55,3 +55,33 @@ def test_html_special_chars_in_title_are_escaped():
     out = render_digest([_ev("AI & ML <Summit> [2026]", cost="free")], now=NOW)
     assert "AI &amp; ML &lt;Summit&gt; [2026]" in out
     assert "<Summit>" not in out  # raw angle brackets never leak through
+
+
+def test_business_and_legal_events_render_under_their_sections():
+    out = render_digest([
+        _ev("Бизнес-завтрак", domain="business"),
+        _ev("Вебинар для юристов", domain="legal"),
+    ], now=NOW)
+    assert "💼 Бизнес-события" in out
+    assert "⚖️ Юридические события" in out
+    assert "Бизнес-завтрак" in out
+    assert "Вебинар для юристов" in out
+
+
+def test_sections_render_in_registry_order():
+    out = render_digest([
+        _ev("L", domain="legal"),
+        _ev("A", domain="ai"),
+        _ev("B", domain="business"),
+        _ev("P", domain="pr"),
+    ], now=NOW)
+    assert (out.find("🤖 События в сфере ИИ")
+            < out.find("📣 PR-события")
+            < out.find("💼 Бизнес-события")
+            < out.find("⚖️ Юридические события"))
+
+
+def test_domain_with_no_events_renders_no_section():
+    out = render_digest([_ev("Только ИИ", domain="ai")], now=NOW)
+    assert "💼 Бизнес-события" not in out
+    assert "⚖️ Юридические события" not in out

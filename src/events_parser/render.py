@@ -1,6 +1,6 @@
 """render_digest — Russian weekly digest (pure function), Telegram-HTML safe.
 
-Sectioned by domain (AI / PR), free events first within each section, plus a
+Sectioned by domain (one section per `models.DOMAINS` entry), free events first within each section, plus a
 separate "open / by-request" section for undated events. Russian typography
 («», —). Empty input renders a graceful "no new events" message.
 
@@ -15,7 +15,7 @@ import html
 from datetime import datetime
 from typing import Optional
 
-from .models import Event
+from .models import DOMAINS, Event
 from .rules import classify_cost, rank
 
 _RU_MONTHS = {
@@ -68,14 +68,16 @@ def render_digest(events: list[Event], *, now: datetime) -> str:
     if not events:
         return EMPTY_MESSAGE
 
-    ai = [e for e in events if e.domain == "ai" and e.start_date is not None]
-    pr = [e for e in events if e.domain == "pr" and e.start_date is not None]
-    open_ = [e for e in events if e.start_date is None]
-
     week = f"{now.day} {_RU_MONTHS[now.month]} {now.year}"
     out: list[str] = [f"<b>Дайджест событий — неделя от {week}</b>", ""]
-    out += _section("🤖 События в сфере ИИ", ai)
-    out += _section("📣 PR-события", pr)
+
+    # One dated section per domain, in registry order; undated events of any
+    # domain collapse into the shared "open / by-request" section below.
+    for domain, spec in DOMAINS.items():
+        dated = [e for e in events if e.domain == domain and e.start_date is not None]
+        out += _section(spec.section_title, dated)
+
+    open_ = [e for e in events if e.start_date is None]
     out += _section("🔓 Открытые события и вебинары по запросу", open_)
 
     if len(out) <= 2:  # only the header, nothing rendered

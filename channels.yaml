@@ -1,5 +1,5 @@
-# Channels scanned for the weekly digest. `domain` (ai|pr) routes a channel to its
-# subagent and digest section. All verified live on t.me/s (2026-06-07).
+# Channels scanned for the weekly digest. `domain` (ai|pr|business|legal) routes a
+# channel to its subagent and digest section. All verified live on t.me/s (2026-06-16).
 channels:
   # --- AI-field events ---
   - handle: ITMeeting                     # митапы/конференции по разработке (incl. AI), free-focused
@@ -9,6 +9,8 @@ channels:
   - handle: iteventsrus                   # IT-события России: форумы/конференции/митапы/вебинары
     domain: ai
   - handle: ai_machinelearning_big_data   # ML/AI, анонсы AI-мероприятий (news + events)
+    domain: ai
+  - handle: itevents                      # IT Events — конференции/митапы/форумы/вебинары/хакатоны (AI/ML/DevOps-heavy)
     domain: ai
 
   # --- PR-field events ---
@@ -20,3 +22,27 @@ channels:
     domain: pr
   - handle: roscongress                   # Росконгресс Директ — крупные форумы
     domain: pr
+  - handle: prmsk_channel                 # #prmsk — клуб московских пиарщиков: митапы/премии/встречи (Москва)
+    domain: pr
+  - handle: prspb_channel                 # #prspb — коммуникационное сообщество СПб: митапы/форумы/премия LOUD (СПб)
+    domain: pr
+  - handle: rasopr                        # РАСО — офиц. канал ассоциации: отраслевые форумы/премии/сессии (часто платные)
+    domain: pr
+
+  # --- Business-field events ---
+  - handle: expomap                       # Expomap — дайджест бизнес-конференций/форумов/выставок
+    domain: business
+  - handle: bizspbnews                    # Бизнес-мероприятия Санкт-Петербурга (конференции/нетворкинги)
+    domain: business
+  - handle: bizmosnews                    # Бизнес-мероприятия Москвы (конференции/бизнес-завтраки)
+    domain: business
+  - handle: exportnow                     # ExportNow — экспорт/венчур в IT: события клуба ИТ-экспортёров (часто международные — Vivatech и т.п.)
+    domain: business
+  - handle: aboutinvestment               # Клуб Инвестиционного Нетворкинга — инвест-завтраки/мини-конференции/нетворкинг (Москва; свои + партнёрские, часто платные)
+    domain: business
+  - handle: wbnrs                          # «Вебинары для бизнеса и маркетинга» — каталог-агрегатор вебинаров/онлайн-конференций (маркетинг/бизнес/продажи; в осн. онлайн)
+    domain: business
+
+  # --- Legal-field events ---
+  - handle: aestheticsoflawevents         # Мероприятия для юристов — вебинары/конференции (много бесплатных)
+    domain: legal

@@ -7,9 +7,11 @@ from typing import Mapping, Optional
 
 import yaml
 
+from .models import DOMAINS
+
 # (handle, domain) pairs — domain routes a channel to its subagent.
 ChannelSpec = tuple[str, str]
-VALID_DOMAINS = {"ai", "pr"}
+VALID_DOMAINS = set(DOMAINS)  # single source of truth: events_parser.models.DOMAINS
 
 
 def load_channels(path: str) -> list[ChannelSpec]:

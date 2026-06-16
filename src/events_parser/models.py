@@ -5,13 +5,31 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal, NamedTuple, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
 EventType = Literal["conference", "meetup", "webinar", "other"]
 CostStatus = Literal["free", "paid", "unknown"]
-Domain = Literal["ai", "pr"]
+Domain = Literal["ai", "pr", "business", "legal"]
+
+
+class DomainSpec(NamedTuple):
+    """Presentation + agent metadata for one event domain."""
+
+    section_title: str  # digest section header (render.py)
+    ru_label: str       # short RU label injected into the subagent prompt (agents.py)
+
+
+# Single source of truth for the domain taxonomy. Insertion order defines the
+# order of sections in the rendered digest. Adding a domain here is all that the
+# deterministic path, the renderer, and the agentic fan-out need.
+DOMAINS: dict[str, DomainSpec] = {
+    "ai":       DomainSpec("🤖 События в сфере ИИ", "ИИ"),
+    "pr":       DomainSpec("📣 PR-события", "PR"),
+    "business": DomainSpec("💼 Бизнес-события", "бизнес"),
+    "legal":    DomainSpec("⚖️ Юридические события", "юридические"),
+}
 
 
 class RawPost(BaseModel):

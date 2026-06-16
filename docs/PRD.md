@@ -79,7 +79,7 @@ is traced in **LangSmith**.
 
 ### Architecture & runtime
 - **Hybrid trigger model.** Two entry points into one pipeline: (a) an **APScheduler** weekly job (in-process, started in the FastAPI lifespan); (b) a Telegram **`/digest` command** handler. Both call the same `run_digest(...)` orchestrator.
-- **Deep Agents topology.** A **supervisor** `create_deep_agent` coordinates **two async subagents** — `ai-events` and `pr-events` — each owning its domain's channels. Async subagents communicate over the **Agent Protocol (ACP)**, **co-deployed via ASGI transport** in the same container (no separate URL). Supervisor merges subagent outputs, then runs cross-domain dedup, ranking, rendering, delivery.
+- **Deep Agents topology.** A **supervisor** `create_deep_agent` coordinates **one async subagent per configured domain** — `ai-events`, `pr-events`, `business-events`, `legal-events` — each owning its domain's channels. Async subagents communicate over the **Agent Protocol (ACP)**, **co-deployed via ASGI transport** in the same container (no separate URL). Supervisor merges subagent outputs, then runs cross-domain dedup, ranking, rendering, delivery.
 - **Deep Agents middleware used:** `TodoListMiddleware` (planning), `FilesystemMiddleware` (offload large `t.me/s` HTML so it never floods the context window), subagent middleware for context-quarantine per domain.
 - **Tools exposed to subagents:** `fetch_posts(channel, before)`, `extract_events(post)` — i.e. the subagents are thin orchestration over the testable seams below.
 
@@ -90,14 +90,14 @@ is traced in **LangSmith**.
 - **Horizon filter** — pure function `within_horizon(event, now)`; keeps dated events within the forward window (default 28 days) and routes undated/rolling events to the "open" bucket.
 - **Ranker** — pure function ordering: **free before paid before unknown**, then by date ascending; stable within ties.
 - **Seen store** — SQLite table keyed by a stable `event_hash` (normalized title + date + host). `is_new()` / `mark_seen()`. DB file on a mounted Docker volume.
-- **Digest renderer** — pure function `Event[] → Russian markdown`, sectioned by domain (AI / PR), free-first within section, plus an "open/rolling" section; Russian typography; source links.
+- **Digest renderer** — pure function `Event[] → Russian markdown`, sectioned by domain (AI / PR / Business / Legal, per `models.DOMAINS`), free-first within section, plus an "open/rolling" section; Russian typography; source links.
 - **Notifier** — sends the rendered digest to a configured Telegram chat via the dedicated bot. Behind an interface so a fake can capture sends in tests.
 - **Orchestrator** — `run_digest(now, config, deps)` wires all of the above with injected dependencies (the **top seam**).
 - **Config** — `channels.yaml` (per-channel `{handle, domain}`), plus env for secrets and tunables (horizon days, schedule cron, target chat id, model ids, send-on-empty flag, dry-run).
 
 ### Data model (`Event`)
 Pydantic model, fields (RU values where user-facing):
-`title`, `description`, `event_type ∈ {conference, meetup, webinar, other}`, `start_date` (nullable for rolling), `end_date` (nullable), `is_online` (bool/unknown), `location` (nullable), `host`, `cost_status ∈ {free, paid, unknown}`, `price_note` (nullable), `registration_url` (nullable), `source_channel`, `source_post_url`, `source_post_dt`, `domain ∈ {ai, pr}`, `event_hash` (derived).
+`title`, `description`, `event_type ∈ {conference, meetup, webinar, other}`, `start_date` (nullable for rolling), `end_date` (nullable), `is_online` (bool/unknown), `location` (nullable), `host`, `cost_status ∈ {free, paid, unknown}`, `price_note` (nullable), `registration_url` (nullable), `source_channel`, `source_post_url`, `source_post_dt`, `domain ∈ {ai, pr, business, legal}`, `event_hash` (derived).
 
 ### Models / inference
 - **Yandex Foundation Models.** Extraction → `yandexgpt-lite` (cheap, high-volume, structured). Digest prose → large open model (**Qwen-2.5-72B** or **DeepSeek**) via Yandex's **OpenAI-compatible** endpoint (`ChatOpenAI(base_url=...)`); YandexGPT via `langchain-community ChatYandexGPT`. Model ids env-configurable. Auth = Yandex API key/IAM + folder id. RU-resident inference.

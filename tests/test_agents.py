@@ -58,3 +58,40 @@ def test_agentic_tool_records_failure_for_unreachable_channel():
     assert collector.events == []
     assert collector.failures == ["dead_chan"]   # surfaced, not silently empty
     assert "dead_chan" in msg
+
+
+from events_parser.agents import build_subagent_specs
+from events_parser.config import Config
+
+
+def test_build_subagent_specs_one_per_configured_domain():
+    config = Config(channels=[
+        ("ai1", "ai"), ("pr1", "pr"),
+        ("biz1", "business"), ("biz2", "business"),
+        ("law1", "legal"),
+    ])
+    specs = build_subagent_specs(config)
+
+    assert [s["name"] for s in specs] == [
+        "ai-events", "pr-events", "business-events", "legal-events"
+    ]
+    biz = next(s for s in specs if s["name"] == "business-events")
+    assert "biz1" in biz["system_prompt"] and "biz2" in biz["system_prompt"]
+    assert "ai1" not in biz["system_prompt"]
+    assert "domain='business'" in biz["system_prompt"]
+    # pure path attaches no tools unless asked
+    assert "tools" not in biz
+
+
+def test_build_subagent_specs_skips_domains_with_no_channels():
+    config = Config(channels=[("ai1", "ai")])
+    specs = build_subagent_specs(config)
+    assert [s["name"] for s in specs] == ["ai-events"]
+
+
+def test_async_subagent_specs_cover_every_domain():
+    from events_parser.agents import async_subagent_specs
+    from events_parser.models import DOMAINS
+
+    graph_ids = {s["graphId"] for s in async_subagent_specs()}
+    assert graph_ids == {f"{d}_events" for d in DOMAINS}

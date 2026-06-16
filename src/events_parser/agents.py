@@ -1,7 +1,7 @@
 """S08 — Deep Agents layer: supervisor + per-domain subagents.
 
-A supervisor `create_deep_agent` delegates to two subagents — `ai-events` and
-`pr-events` — each owning its domain's channels. The subagents do the scanning by
+A supervisor `create_deep_agent` delegates to one subagent per configured domain
+(driven by `models.DOMAINS`), each owning its domain's channels. The subagents do the scanning by
 calling tools; the tools perform deterministic fetch+extract and record results
 into a typed collector (side-effect sink), so digest correctness never depends on
 parsing the LLM's free-text output. The collected events are then handed to the
@@ -58,7 +58,7 @@ def _build_tools(collector: EventCollector, scan_days: int, fetch=None, extracto
 
     @tool
     def extract_and_record_events(channel: str, domain: str) -> str:
-        """Scan a channel, extract events, and record them under the given domain (ai|pr).
+        """Scan a channel, extract events, and record them under the given domain (ai|pr|business|legal).
 
         Returns how many events were recorded. Call this once per channel you own.
         """
@@ -94,40 +94,45 @@ def _domain_channels(config: Config, domain: str) -> list[str]:
     return [h for h, d in config.channels if d == domain]
 
 
+def build_subagent_specs(config: Config, tools=None) -> list[dict]:
+    """One subagent spec per domain *present in config*, driven by models.DOMAINS.
+
+    Pure — imports neither deepagents nor langchain — so the fan-out is unit-testable.
+    ``tools`` is attached only when provided (the live build_supervisor path).
+    """
+    from .models import DOMAINS
+
+    specs: list[dict] = []
+    for domain, spec in DOMAINS.items():
+        channels = _domain_channels(config, domain)
+        if not channels:
+            continue
+        sub = {
+            "name": f"{domain}-events",
+            "description": f"Scans {domain}-field Telegram channels and records upcoming events.",
+            "system_prompt": (
+                f"Ты отвечаешь за поиск мероприятий ({spec.ru_label}). Для КАЖДОГО из этих "
+                f"каналов вызови extract_and_record_events(channel, domain='{domain}'): {channels}. "
+                "После обработки всех каналов кратко отчитайся, сколько событий записано."
+            ),
+        }
+        if tools is not None:
+            sub["tools"] = tools
+        specs.append(sub)
+    return specs
+
+
 def build_supervisor(collector: EventCollector, config: Config,
                      env: Optional[Mapping[str, str]] = None):
-    """Construct the Deep Agents supervisor with ai-events / pr-events subagents."""
+    """Construct the Deep Agents supervisor with one subagent per configured domain."""
     from deepagents import create_deep_agent
 
     env = env if env is not None else os.environ
     tools = _build_tools(collector, config.scan_days)
     model = _agent_model(env)
 
-    ai_channels = _domain_channels(config, "ai")
-    pr_channels = _domain_channels(config, "pr")
-
-    subagents = [
-        {
-            "name": "ai-events",
-            "description": "Scans AI-field Telegram channels and records upcoming events.",
-            "system_prompt": (
-                "Ты отвечаешь за поиск мероприятий в сфере ИИ. Для КАЖДОГО из этих каналов "
-                f"вызови extract_and_record_events(channel, domain='ai'): {ai_channels}. "
-                "После обработки всех каналов кратко отчитайся, сколько событий записано."
-            ),
-            "tools": tools,
-        },
-        {
-            "name": "pr-events",
-            "description": "Scans PR-field Telegram channels and records upcoming events.",
-            "system_prompt": (
-                "Ты отвечаешь за поиск PR-мероприятий. Для КАЖДОГО из этих каналов "
-                f"вызови extract_and_record_events(channel, domain='pr'): {pr_channels}. "
-                "После обработки всех каналов кратко отчитайся, сколько событий записано."
-            ),
-            "tools": tools,
-        },
-    ]
+    subagents = build_subagent_specs(config, tools=tools)
+    delegate = ", ".join(s["name"] for s in subagents)
 
     # create_deep_agent bundles the planning (TodoList) and Filesystem middleware by
     # default, so per-domain planning + large-payload offload are active without explicit
@@ -139,22 +144,24 @@ def build_supervisor(collector: EventCollector, config: Config,
         subagents=subagents,
         system_prompt=(
             "Ты — супервайзер еженедельного дайджеста мероприятий. Делегируй сбор событий "
-            "субагентам ai-events и pr-events, затем сообщи, что сбор завершён. Не пиши сам "
+            f"субагентам ({delegate}), затем сообщи, что сбор завершён. Не пиши сам "
             "дайджест — его соберёт детерминированный пайплайн из записанных событий."
         ),
     )
 
 
 def async_subagent_specs(env: Optional[Mapping[str, str]] = None) -> list[dict]:
-    """Production async-subagent-server specs (deepagents 0.5 preview).
+    """Production async-subagent-server specs (deepagents 0.5 preview), one per domain.
 
     Co-deployed (no url) over ASGI under a LangGraph deployment; each graphId must
     be registered in langgraph.json. Used instead of inline subagents when running
     under LangSmith Deployments / `langgraph dev`.
     """
+    from .models import DOMAINS
+
     return [
-        {"name": "ai-events", "description": "AI-field event scanner", "graphId": "ai_events"},
-        {"name": "pr-events", "description": "PR-field event scanner", "graphId": "pr_events"},
+        {"name": f"{d}-events", "description": f"{d}-field event scanner", "graphId": f"{d}_events"}
+        for d in DOMAINS
     ]
 
 
@@ -191,6 +198,16 @@ def pr_events_graph():
     return _domain_graph("pr")
 
 
+def business_events_graph():
+    """LangGraph entrypoint for the async business-events subagent server."""
+    return _domain_graph("business")
+
+
+def legal_events_graph():
+    """LangGraph entrypoint for the async legal-events subagent server."""
+    return _domain_graph("legal")
+
+
 def supervisor_graph():
     """LangGraph entrypoint: supervisor wired to async subagents (co-deployed ASGI)."""
     from deepagents import create_deep_agent
@@ -201,7 +218,7 @@ def supervisor_graph():
         model=_agent_model(os.environ),
         tools=_build_tools(collector, config.scan_days),
         subagents=async_subagent_specs(),  # AsyncSubAgent over Agent Protocol
-        system_prompt="Делегируй сбор событий async-субагентам ai-events и pr-events.",
+        system_prompt="Делегируй сбор событий доступным async-субагентам по доменам.",
     )
 
 
@@ -218,7 +235,7 @@ class AgentDigestService:
         supervisor = build_supervisor(collector, self._config, self._env)
         supervisor.invoke({"messages": [{
             "role": "user",
-            "content": "Собери мероприятия по всем каналам через субагентов ai-events и pr-events.",
+            "content": "Собери мероприятия по всем каналам, делегируя сбор доступным субагентам по доменам.",
         }]})
         return finish_digest(collector.events, now, self._config, self._deps,
                              fetch_failures=collector.failures)
