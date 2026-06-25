@@ -9,8 +9,19 @@ domain language so issues, tests, and decisions use one set of words.
 **Fire**:
 The weekly cron trigger reaching its scheduled time and invoking a digest run. A fire
 is distinct from delivery — the job can fire and still deliver nothing (empty week) or
-fail mid-run.
+fail mid-run. A fire that the scheduler drops before the run even starts is a **missed
+fire**, not a fire.
 _Avoid_: trigger (reserve "trigger" for the manual `/trigger` HTTP endpoint), run
+
+**Missed fire**:
+A scheduled fire the scheduler dropped *before* the digest run started, because pickup
+slipped past `misfire_grace_time`. Distinct from a fire that ran and failed (caught by
+`run_guarded`) and from the overlap-lock skip inside `run()`: a missed fire never enters
+`DigestRunner.run`, so the run-level guard — and its operator alert — never see it. The
+scheduler-layer counterpart to a **fetch failure**: a precise signal (APScheduler's
+`EVENT_JOB_MISSED`) that something the blunt 0-events / silence proxy can't catch went
+wrong. Alerting on it is what keeps a lost weekly fire from passing unnoticed.
+_Avoid_: skipped run (ambiguous with the lock-skip in `run()`), misfire (jargon)
 
 **Digest run**:
 One execution of the pipeline `fetch → extract → tag domain → horizon-filter → dedup →

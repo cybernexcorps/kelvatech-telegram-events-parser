@@ -16,9 +16,28 @@ from fastapi import FastAPI, Request
 from .factory import build_config, build_deps
 from .notify import TelegramNotifier, build_error_alerter
 from .runner import DigestRunner
-from .schedule import build_weekly_trigger
+from .schedule import configure_scheduler
 
-logging.basicConfig(level=logging.INFO)
+def _configure_logging() -> None:
+    """App-wide logging: our own logs at INFO, but third-party HTTP loggers above it.
+
+    httpx logs every request as ``INFO:httpx:HTTP Request: POST <url>``; the Telegram Bot
+    API carries the bot token in the URL *path* (``/bot<TOKEN>/sendMessage``), so that one
+    INFO line leaks the token into ``docker logs``. The token can't be header-redacted —
+    it's in the path — so the fix is to keep httpx (and the chatty telethon network
+    logger) above INFO. Rotating the token (BotFather) is the companion step for any token
+    already printed.
+    """
+    logging.basicConfig(level=logging.INFO)
+    # basicConfig no-ops if the root already has a handler (pytest/uvicorn add one), so
+    # set our own logger explicitly rather than relying on root inheritance.
+    logging.getLogger("events_parser").setLevel(logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("telethon").setLevel(logging.WARNING)
+
+
+_configure_logging()
 log = logging.getLogger(__name__)
 
 
@@ -52,10 +71,11 @@ async def lifespan(app: FastAPI):
     # Every caller routes through runner.run_guarded (never-crash); only the SCHEDULED
     # fire passes an alerter — the manual /trigger and /digest paths report failures to
     # their own human caller, so they guard without alerting. See docs/adr/0005.
+    # configure_scheduler also adds a generous misfire grace + a missed-fire alert so a
+    # fire the scheduler drops before the run starts can't pass unnoticed. See docs/adr/0006.
     alerter = build_error_alerter(os.environ)
-    scheduler.add_job(lambda: runner.run_guarded(alert=alerter),
-                      build_weekly_trigger(cron), id="weekly_digest",
-                      max_instances=1, coalesce=True)
+    configure_scheduler(scheduler, lambda: runner.run_guarded(alert=alerter),
+                        alerter, cron)
     scheduler.start()
     app.state.scheduler = scheduler
     log.info("scheduler started; weekly digest cron=%r", cron)

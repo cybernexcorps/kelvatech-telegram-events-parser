@@ -53,3 +53,24 @@ def test_reply_is_best_effort_and_never_raises():
 def test_reply_noops_when_replier_unset():
     app.state.replier = None
     _reply(1, "x")  # no bot token configured → silent no-op, no network
+
+
+def test_configure_logging_silences_httpx_to_keep_bot_token_out_of_logs():
+    """The Telegram Bot API carries the token in the request *path*
+    (/bot<TOKEN>/sendMessage), so httpx's INFO "HTTP Request: POST <url>" line leaks the
+    token into docker logs. _configure_logging must raise httpx (and telethon) above INFO
+    so that line never prints, while leaving our own logging at INFO."""
+    import logging
+
+    from events_parser.app import _configure_logging
+
+    # Pre-dirty the loggers to INFO to prove the function actually raises them.
+    logging.getLogger("httpx").setLevel(logging.INFO)
+    logging.getLogger("telethon").setLevel(logging.INFO)
+
+    _configure_logging()
+
+    assert not logging.getLogger("httpx").isEnabledFor(logging.INFO)
+    assert not logging.getLogger("telethon").isEnabledFor(logging.INFO)
+    # our own logs stay at INFO
+    assert logging.getLogger("events_parser").isEnabledFor(logging.INFO)
